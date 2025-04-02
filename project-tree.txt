@@ -1,0 +1,13 @@
+oscal-manager/
+├── src/
+│   ├── __init__.py
+│   ├── main.py
+│   ├── gui.py
+│   └── oscal_handler.py
+├── data/
+│   └── catalog.json
+├── docs/
+│   └── README.md
+├── venv/
+├── requirements.txt
+└── .gitignore

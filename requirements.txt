@@ -1,0 +1,2 @@
+oscal-pydantic
+tkinter
