@@ -1,4 +1,3 @@
-```markdown
 # OSCAL Catalog Manager
 
 A Python application for managing NIST SP 800-53 control catalogs in OSCAL format, featuring a graphical user interface (GUI) built with Tkinter. This tool allows users to load, view, and edit control details from an OSCAL JSON file, making it useful for compliance management and security control maintenance.
@@ -85,24 +84,3 @@ MIT License (or replace with your preferred license).
 
 ## Acknowledgments
 - Built with support from NIST’s OSCAL project: [oscal-content](https://github.com/usnistgov/oscal-content).
-- Thanks to xAI’s Grok for development assistance!
-```
-
----
-
-### How to Use It
-1. **Save the File**:
-   - Copy the above text into `docs/README.md` in your project directory (`/Users/kilynn/Projects/oscal-manager/docs/README.md`).
-   - Replace `yourusername` in the clone URL with your actual GitHub username when you upload it.
-
-2. **Commit It**:
-   ```bash
-   git add docs/README.md
-   git commit -m "Add README.md for project documentation"
-   git push origin main  # Adjust branch name if needed
-   ```
-
-3. **Customize**:
-   - Update the repository URL once you push to GitHub.
-   - Add more sections (e.g., “Troubleshooting” or “Future Features”) if desired.
-
