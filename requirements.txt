@@ -1,2 +1,6 @@
-oscal-pydantic
-tkinter
+dnspython==2.7.0
+email_validator==2.2.0
+idna==3.10
+oscal-pydantic==2023.3.21
+pydantic==1.10.13
+typing_extensions==4.13.0
