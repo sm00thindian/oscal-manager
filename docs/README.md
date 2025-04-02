@@ -80,7 +80,7 @@ See `requirements.txt` for the full list.
 Feel free to fork this repository, submit issues, or send pull requests. Ensure changes are tested with Python 3.10 and the NIST SP 800-53 Rev 5 catalog.
 
 ## License
-MIT License (or replace with your preferred license).
+Apache 2.0
 
 ## Acknowledgments
 - Built with support from NIST’s OSCAL project: [oscal-content](https://github.com/usnistgov/oscal-content).
