@@ -1,4 +1,4 @@
-# OSCAL Catalog Manager
+# OSCAL Manager
 
 A Python application for managing NIST SP 800-53 control catalogs in OSCAL format, featuring a graphical user interface (GUI) built with Tkinter. This tool allows users to load, view, and edit control details from an OSCAL JSON file, making it useful for compliance management and security control maintenance.
 
