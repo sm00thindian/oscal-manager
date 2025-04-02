@@ -5,7 +5,7 @@ oscal-manager/
 │   ├── gui.py
 │   └── oscal_handler.py
 ├── data/
-│   └── catalog.json
+│   └── NIST_SP-800-53_rev5_catalog.json
 ├── docs/
 │   └── README.md
 ├── venv/
