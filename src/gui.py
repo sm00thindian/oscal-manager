@@ -7,18 +7,36 @@ class CatalogGUI:
     def __init__(self, catalog):
         self.catalog = catalog
         self.root = tk.Tk()
-        self.root.title("OSCAL Catalog Manager")
-        self.root.geometry("800x900")  # Increased height for more fields
-        self.root.resizable(False, False)
+        self.root.title("OSCAL Manager")
+        self.root.geometry("800x600")
+        self.root.resizable(True, True)
 
-        self.tree = ttk.Treeview(self.root, columns=("ID", "Title"), show="headings", height=15)
+        # Create a canvas and scrollbar for the entire window
+        self.canvas = tk.Canvas(self.root)
+        self.scrollbar = ttk.Scrollbar(self.root, orient="vertical", command=self.canvas.yview)
+        self.scrollable_frame = ttk.Frame(self.canvas)
+
+        self.scrollable_frame.bind(
+            "<Configure>",
+            lambda e: self.canvas.configure(scrollregion=self.canvas.bbox("all"))
+        )
+
+        self.canvas.create_window((0, 0), window=self.scrollable_frame, anchor="nw")
+        self.canvas.configure(yscrollcommand=self.scrollbar.set)
+
+        self.canvas.pack(side="left", fill="both", expand=True)
+        self.scrollbar.pack(side="right", fill="y")
+
+        # Treeview
+        self.tree = ttk.Treeview(self.scrollable_frame, columns=("ID", "Title"), show="headings", height=15)
         self.tree.heading("ID", text="Control ID")
         self.tree.heading("Title", text="Title")
         self.tree.column("ID", width=150)
         self.tree.column("Title", width=600)
         self.tree.pack(fill=tk.BOTH, padx=10, pady=10)
 
-        self.edit_frame = tk.Frame(self.root)
+        # Edit Frame
+        self.edit_frame = ttk.Frame(self.scrollable_frame)
         self.edit_frame.pack(fill=tk.BOTH, padx=10, pady=10)
 
         # Title
@@ -48,21 +66,40 @@ class CatalogGUI:
         self.props_text.grid(row=3, column=1, pady=5)
         self.props_text.bind("<<Modified>>", self.update_props_var)
 
-        # Related Links
-        tk.Label(self.edit_frame, text="Related Links:").grid(row=4, column=0, sticky="ne")
-        self.links_var = tk.StringVar()
-        self.links_text = tk.Text(self.edit_frame, height=3, width=80)
-        self.links_text.grid(row=4, column=1, pady=5)
-        self.links_text.bind("<<Modified>>", self.update_links_var)
+        # Responsible Roles
+        tk.Label(self.edit_frame, text="Responsible Roles:").grid(row=4, column=0, sticky="ne")
+        self.roles_var = tk.StringVar()
+        self.roles_text = tk.Text(self.edit_frame, height=2, width=80)
+        self.roles_text.grid(row=4, column=1, pady=5)
+        self.roles_text.bind("<<Modified>>", self.update_roles_var)
+
+        # Implementation Status
+        tk.Label(self.edit_frame, text="Implementation Status:").grid(row=5, column=0, sticky="e")
+        self.status_var = tk.StringVar()
+        self.status_entry = tk.Entry(self.edit_frame, textvariable=self.status_var, width=80)
+        self.status_entry.grid(row=5, column=1, pady=5)
+
+        # References
+        tk.Label(self.edit_frame, text="References:").grid(row=6, column=0, sticky="ne")
+        self.refs_var = tk.StringVar()
+        self.refs_text = tk.Text(self.edit_frame, height=3, width=80)
+        self.refs_text.grid(row=6, column=1, pady=5)
+        self.refs_text.bind("<<Modified>>", self.update_refs_var)
+
+        # Related Links (with clickable labels)
+        tk.Label(self.edit_frame, text="Related Links:").grid(row=7, column=0, sticky="ne")
+        self.links_frame = ttk.Frame(self.edit_frame)
+        self.links_frame.grid(row=7, column=1, pady=5, sticky="w")
+        self.link_labels = []  # To store clickable labels
 
         # Control Enhancements
-        tk.Label(self.edit_frame, text="Enhancements:").grid(row=5, column=0, sticky="ne")
+        tk.Label(self.edit_frame, text="Enhancements:").grid(row=8, column=0, sticky="ne")
         self.enhancements_var = tk.StringVar()
         self.enhancements_text = tk.Text(self.edit_frame, height=3, width=80)
-        self.enhancements_text.grid(row=5, column=1, pady=5)
+        self.enhancements_text.grid(row=8, column=1, pady=5)
         self.enhancements_text.bind("<<Modified>>", self.update_enhancements_var)
 
-        tk.Button(self.edit_frame, text="Save Changes", command=self.save_changes).grid(row=6, column=1, pady=10, sticky="e")
+        tk.Button(self.edit_frame, text="Save Changes", command=self.save_changes).grid(row=9, column=1, pady=10, sticky="e")
 
         self.populate_tree()
         self.tree.bind("<<TreeviewSelect>>", self.on_select)
@@ -73,6 +110,39 @@ class CatalogGUI:
             group_node = self.tree.insert("", "end", text=group.id, values=(group.id, group.title))
             for control in group.controls or []:
                 self.tree.insert(group_node, "end", text=control.id, values=(control.id, control.title))
+
+    def find_control_by_id(self, control_id):
+        """Find a control by its ID in the catalog."""
+        for group in self.catalog.groups or []:
+            if group.id == control_id:
+                return group
+            for control in group.controls or []:
+                if control.id == control_id:
+                    return control
+        return None
+
+    def find_resource_by_uuid(self, uuid):
+        """Find a resource by its UUID in the back-matter."""
+        if hasattr(self.catalog, "back_matter") and self.catalog.back_matter:
+            if hasattr(self.catalog.back_matter, "resources"):
+                for resource in self.catalog.back_matter.resources or []:
+                    if getattr(resource, "uuid", "") == uuid:
+                        return resource
+        return None
+
+    def on_link_click(self, target_id):
+        """Handle clicking a related link by selecting the target in the tree."""
+        # Find the tree item with the target ID
+        for item in self.tree.get_children():
+            if self.tree.item(item, "values")[0] == target_id:
+                self.tree.selection_set(item)
+                self.tree.see(item)
+                return
+            for child in self.tree.get_children(item):
+                if self.tree.item(child, "values")[0] == target_id:
+                    self.tree.selection_set(child)
+                    self.tree.see(child)
+                    return
 
     def on_select(self, event):
         """Update entry fields when a group or control is selected."""
@@ -92,9 +162,17 @@ class CatalogGUI:
                     self.props_text.delete("1.0", tk.END)
                     self.props_text.insert("1.0", "")
                     self.props_var.set("")
-                    self.links_text.delete("1.0", tk.END)
-                    self.links_text.insert("1.0", "")
-                    self.links_var.set("")
+                    self.roles_text.delete("1.0", tk.END)
+                    self.roles_text.insert("1.0", "")
+                    self.roles_var.set("")
+                    self.status_var.set("")
+                    self.refs_text.delete("1.0", tk.END)
+                    self.refs_text.insert("1.0", "")
+                    self.refs_var.set("")
+                    # Clear existing link labels
+                    for label in self.link_labels:
+                        label.destroy()
+                    self.link_labels.clear()
                     self.enhancements_text.delete("1.0", tk.END)
                     self.enhancements_text.insert("1.0", "")
                     self.enhancements_var.set("")
@@ -108,7 +186,6 @@ class CatalogGUI:
                         if hasattr(control, "parts") and control.parts:
                             for part in control.parts:
                                 if getattr(part, "name", "") == "statement":
-                                    # Try different attribute names for prose
                                     prose = getattr(part, "prose", getattr(part, "value", getattr(part, "text", "")))
                                     if isinstance(prose, str):
                                         desc = prose
@@ -152,17 +229,89 @@ class CatalogGUI:
                         self.props_text.insert("1.0", props_text)
                         self.props_var.set(props_text)
 
-                        # Related Links
-                        links = []
+                        # Responsible Roles
+                        roles = []
+                        if hasattr(control, "props") and control.props:
+                            for prop in control.props:
+                                if getattr(prop, "name", "") == "responsible-role":
+                                    value = getattr(prop, "value", "")
+                                    roles.append(value)
+                        roles_text = "\n".join(roles)
+                        self.roles_text.delete("1.0", tk.END)
+                        self.roles_text.insert("1.0", roles_text)
+                        self.roles_var.set(roles_text)
+
+                        # Implementation Status
+                        status = ""
+                        if hasattr(control, "props") and control.props:
+                            for prop in control.props:
+                                if getattr(prop, "name", "") == "status":
+                                    status = getattr(prop, "value", "")
+                                    break
+                        self.status_var.set(status)
+
+                        # References
+                        refs = []
+                        if hasattr(control, "parts") and control.parts:
+                            for part in control.parts:
+                                if getattr(part, "name", "") == "reference":
+                                    prose = getattr(part, "prose", getattr(part, "value", getattr(part, "text", "")))
+                                    if isinstance(prose, str):
+                                        refs.append(prose)
+                                    elif prose:
+                                        refs.append(str(prose))
+                        refs_text = "\n".join(refs)
+                        self.refs_text.delete("1.0", tk.END)
+                        self.refs_text.insert("1.0", refs_text)
+                        self.refs_var.set(refs_text)
+
+                        # Related Links (with resolved references)
+                        # Clear existing link labels
+                        for label in self.link_labels:
+                            label.destroy()
+                        self.link_labels.clear()
+
                         if hasattr(control, "links") and control.links:
-                            for link in control.links:
+                            for i, link in enumerate(control.links):
                                 text = getattr(link, "text", "None")
                                 href = getattr(link, "href", "")
-                                links.append(f"{text} ({href})")
-                        links_text = "\n".join(links)
-                        self.links_text.delete("1.0", tk.END)
-                        self.links_text.insert("1.0", links_text)
-                        self.links_var.set(links_text)
+                                if href.startswith("#"):
+                                    target_id = href[1:]  # Remove the "#"
+                                    # Try to find a control with this ID
+                                    target_control = self.find_control_by_id(target_id)
+                                    if target_control:
+                                        target_title = getattr(target_control, "title", target_id)
+                                        display_text = f"{target_title} ({target_id})"
+                                        # Create a clickable label
+                                        link_label = ttk.Label(
+                                            self.links_frame,
+                                            text=display_text,
+                                            foreground="blue",
+                                            cursor="hand2"
+                                        )
+                                        link_label.grid(row=i, column=0, sticky="w")
+                                        link_label.bind("<Button-1>", lambda e, tid=target_id: self.on_link_click(tid))
+                                        self.link_labels.append(link_label)
+                                    else:
+                                        # Try to find a resource in back-matter
+                                        target_resource = self.find_resource_by_uuid(target_id)
+                                        if target_resource:
+                                            target_title = getattr(target_resource, "title", target_id)
+                                            display_text = f"{target_title} ({target_id})"
+                                            # Display as non-clickable (resources aren't in the tree)
+                                            link_label = ttk.Label(self.links_frame, text=display_text)
+                                            link_label.grid(row=i, column=0, sticky="w")
+                                            self.link_labels.append(link_label)
+                                        else:
+                                            # Fallback to original display
+                                            link_label = ttk.Label(self.links_frame, text=f"{text} ({href})")
+                                            link_label.grid(row=i, column=0, sticky="w")
+                                            self.link_labels.append(link_label)
+                                else:
+                                    # External link (not clickable for now)
+                                    link_label = ttk.Label(self.links_frame, text=f"{text} ({href})")
+                                    link_label.grid(row=i, column=0, sticky="w")
+                                    self.link_labels.append(link_label)
 
                         # Control Enhancements
                         enhancements = []
@@ -189,9 +338,16 @@ class CatalogGUI:
         self.props_var.set(self.props_text.get("1.0", tk.END).strip())
         self.props_text.edit_modified(False)
 
+    def update_roles_var(self, event):
+        self.roles_var.set(self.roles_text.get("1.0", tk.END).strip())
+        self.roles_text.edit_modified(False)
+
+    def update_refs_var(self, event):
+        self.refs_var.set(self.refs_text.get("1.0", tk.END).strip())
+        self.refs_text.edit_modified(False)
+
     def update_links_var(self, event):
-        self.links_var.set(self.links_text.get("1.0", tk.END).strip())
-        self.links_text.edit_modified(False)
+        pass  # Not used since we're using labels now
 
     def update_enhancements_var(self, event):
         self.enhancements_var.set(self.enhancements_text.get("1.0", tk.END).strip())
@@ -207,7 +363,10 @@ class CatalogGUI:
             new_desc = self.desc_var.get()
             new_items = self.items_var.get().split("\n")
             new_props = self.props_var.get().split("\n")
-            new_links = self.links_var.get().split("\n")
+            new_roles = self.roles_var.get().split("\n")
+            new_status = self.status_var.get()
+            new_refs = self.refs_var.get().split("\n")
+            # Links are not editable in this version
             for group in self.catalog.groups or []:
                 if group.id == item_id:
                     group.title = new_title
@@ -245,14 +404,35 @@ class CatalogGUI:
                                     name, value = prop_text.split(": ", 1) if ": " in prop_text else (control.props[i].name, prop_text)
                                     control.props[i].name = name
                                     control.props[i].value = value
-                        # Update Links
-                        if hasattr(control, "links") and control.links:
-                            for i, link_text in enumerate(new_links):
-                                if i < len(control.links) and link_text:
-                                    text, href = link_text.rsplit(" (", 1) if " (" in link_text else (link_text, "")
-                                    href = href.rstrip(")") if href else ""
-                                    control.links[i].text = text
-                                    control.links[i].href = href
+                        # Update Responsible Roles
+                        if hasattr(control, "props") and control.props:
+                            role_props = [prop for prop in control.props if getattr(prop, "name", "") == "responsible-role"]
+                            for i, role in enumerate(new_roles):
+                                if i < len(role_props) and role:
+                                    role_props[i].value = role
+                        # Update Implementation Status
+                        if hasattr(control, "props") and control.props:
+                            status_prop = None
+                            for prop in control.props:
+                                if getattr(prop, "name", "") == "status":
+                                    status_prop = prop
+                                    break
+                            if status_prop:
+                                status_prop.value = new_status
+                            else:
+                                # Add new status prop if it doesn't exist
+                                control.props.append(type(control.props[0])(name="status", value=new_status))
+                        # Update References
+                        if hasattr(control, "parts") and control.parts:
+                            ref_parts = [part for part in control.parts if getattr(part, "name", "") == "reference"]
+                            for i, ref_text in enumerate(new_refs):
+                                if i < len(ref_parts) and ref_text:
+                                    if hasattr(ref_parts[i], "prose"):
+                                        ref_parts[i].prose = ref_text
+                                    elif hasattr(ref_parts[i], "value"):
+                                        ref_parts[i].value = ref_text
+                                    elif hasattr(ref_parts[i], "text"):
+                                        ref_parts[i].text = ref_text
                         break
             self.tree.item(selected[0], values=(item_id, new_title))
             save_catalog(self.catalog, "data/NIST_SP-800-53_rev5_catalog.json")
