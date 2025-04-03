@@ -3,6 +3,7 @@ from tkinter import ttk, messagebox
 from oscal_pydantic.catalog import Catalog, ControlGroup, Control  # Updated import
 from pydantic import ValidationError
 import json
+import webbrowser  # Added for opening external URLs
 
 def save_catalog(catalog: Catalog, file_path: str):
     with open(file_path, 'w') as f:
@@ -19,21 +20,22 @@ class GroupDetails(ttk.Frame):
         self.props_text = tk.Text(self, height=5, width=80)
         self.props_text.grid(row=1, column=1, pady=5)
 
-    def load(self, group: ControlGroup):  # Updated type hint
+    def load(self, group: ControlGroup):
         """Loads group data into the widgets."""
         self.title_var.set(group.title or "")
         props = "\n".join(f"{prop.name}: {prop.value}" for prop in group.props or [])
         self.props_text.delete("1.0", tk.END)
         self.props_text.insert("1.0", props)
 
-    def save(self, group: ControlGroup):  # Updated type hint
+    def save(self, group: ControlGroup):
         """Saves widget data back to the group object."""
         group.title = self.title_var.get()
 
 class ControlDetails(ttk.Frame):
     """Handles display and editing of control details."""
-    def __init__(self, parent):
+    def __init__(self, parent, manager):
         super().__init__(parent)
+        self.manager = manager  # Reference to CatalogManager for resolving links
         tk.Label(self, text="Title:").grid(row=0, column=0, sticky="e", padx=5, pady=5)
         self.title_var = tk.StringVar()
         tk.Entry(self, textvariable=self.title_var, width=80).grid(row=0, column=1, pady=5)
@@ -85,14 +87,39 @@ class ControlDetails(ttk.Frame):
         refs = "\n".join(link.href for link in control.links or [] if link.rel == "reference")
         self.refs_text.delete("1.0", tk.END)
         self.refs_text.insert("1.0", refs or "No references.")
+        
+        # Enhanced handling of related links
         for label in self.link_labels:
             label.destroy()
         self.link_labels = []
         for link in control.links or []:
             if link.rel == "related":
-                lbl = tk.Label(self.links_frame, text=link.href, fg="blue", cursor="hand2")
-                lbl.pack(anchor="w")
+                href = link.href
+                if href.startswith("#"):  # Internal reference
+                    target_id = href[1:]
+                    control_title = self.manager.get_control_title_by_id(target_id)
+                    if control_title:
+                        display_text = f"{control_title} ({target_id})"
+                        lbl = tk.Label(self.links_frame, text=display_text, fg="blue", cursor="hand2")
+                        lbl.pack(anchor="w")
+                        lbl.bind("<Button-1>", lambda e, tid=target_id: self.manager.select_control_by_id(tid))
+                    else:
+                        resource_title = self.manager.get_resource_title_by_uuid(target_id)
+                        if resource_title:
+                            display_text = f"{resource_title} ({target_id})"
+                            lbl = tk.Label(self.links_frame, text=display_text)
+                            lbl.pack(anchor="w")
+                        else:
+                            display_text = f"Unknown Reference ({href})"
+                            lbl = tk.Label(self.links_frame, text=display_text)
+                            lbl.pack(anchor="w")
+                else:  # External URL
+                    display_text = href
+                    lbl = tk.Label(self.links_frame, text=display_text, fg="blue", cursor="hand2")
+                    lbl.pack(anchor="w")
+                    lbl.bind("<Button-1>", lambda e, url=href: webbrowser.open(url))
                 self.link_labels.append(lbl)
+        
         enhancements = "\n".join(f"{ctrl.id}: {ctrl.title}" for ctrl in control.controls or [])
         self.enhancements_text.delete("1.0", tk.END)
         self.enhancements_text.insert("1.0", enhancements or "No enhancements.")
@@ -112,16 +139,17 @@ class ControlDetails(ttk.Frame):
 
 class DetailsPane(ttk.Frame):
     """Manages switching between group and control details."""
-    def __init__(self, parent):
+    def __init__(self, parent, manager):
         super().__init__(parent)
+        self.manager = manager  # Reference to CatalogManager
         self.group_details = GroupDetails(self)
-        self.control_details = ControlDetails(self)
+        self.control_details = ControlDetails(self, manager)  # Pass manager to ControlDetails
         self.no_selection_label = tk.Label(self, text="Select a group or control to edit")
         self.no_selection_label.grid(row=0, column=0, padx=5, pady=5)
         self.current_details = None
         self.current_object = None
 
-    def show_group(self, group: ControlGroup):  # Updated type hint
+    def show_group(self, group: ControlGroup):
         """Displays group details."""
         self.control_details.grid_remove()
         self.group_details.grid(row=0, column=0, padx=5, pady=5)
@@ -169,7 +197,7 @@ class CatalogManager:
         scrollbar = ttk.Scrollbar(main_frame, orient="vertical", command=self.tree.yview)
         scrollbar.pack(side=tk.LEFT, fill=tk.Y)
         self.tree.configure(yscrollcommand=scrollbar.set)
-        self.details_pane = DetailsPane(main_frame)
+        self.details_pane = DetailsPane(main_frame, self)  # Pass self as manager
         self.details_pane.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True)
         tk.Button(self.root, text="Save Changes", command=self.save_changes).pack(pady=10)
         for group in self.catalog.groups or []:
@@ -197,7 +225,7 @@ class CatalogManager:
         else:
             self.details_pane.clear()
 
-    def find_group_by_id(self, group_id: str) -> ControlGroup:  # Updated return type
+    def find_group_by_id(self, group_id: str) -> ControlGroup:
         """Finds a group by ID."""
         for group in self.catalog.groups or []:
             if group.id == group_id:
@@ -211,6 +239,38 @@ class CatalogManager:
                 if control.id == control_id:
                     return control
         return None
+
+    def find_tree_item_by_id(self, target_id):
+        """Find a tree item by its control ID."""
+        for item in self.tree.get_children():
+            if self.tree.item(item, "values")[0] == target_id:
+                return item
+            for child in self.tree.get_children(item):
+                if self.tree.item(child, "values")[0] == target_id:
+                    return child
+        return None
+
+    def get_control_title_by_id(self, control_id):
+        """Get the title of a control by its ID."""
+        control = self.find_control_by_id(control_id)
+        return control.title if control else None
+
+    def get_resource_title_by_uuid(self, uuid):
+        """Get the title of a resource by its UUID from back-matter."""
+        if hasattr(self.catalog, 'back_matter') and self.catalog.back_matter:
+            for resource in self.catalog.back_matter.resources or []:
+                if resource.uuid == uuid:
+                    return resource.title
+        return None
+
+    def select_control_by_id(self, control_id):
+        """Select a control in the tree by its ID."""
+        item = self.find_tree_item_by_id(control_id)
+        if item:
+            self.tree.selection_set(item)
+            self.tree.see(item)
+        else:
+            messagebox.showinfo("Not Found", f"Control {control_id} not found in the catalog.")
 
     def save_changes(self):
         """Saves changes to the catalog file."""
