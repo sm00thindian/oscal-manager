@@ -1,9 +1,9 @@
 import tkinter as tk
 from tkinter import ttk, messagebox
-from oscal_pydantic.catalog import Catalog, ControlGroup, Control  # Updated import
+from oscal_pydantic.catalog import Catalog, ControlGroup, Control
 from pydantic import ValidationError
 import json
-import webbrowser  # Added for opening external URLs
+import webbrowser
 
 def save_catalog(catalog: Catalog, file_path: str):
     with open(file_path, 'w') as f:
@@ -35,7 +35,7 @@ class ControlDetails(ttk.Frame):
     """Handles display and editing of control details."""
     def __init__(self, parent, manager):
         super().__init__(parent)
-        self.manager = manager  # Reference to CatalogManager for resolving links
+        self.manager = manager
         tk.Label(self, text="Title:").grid(row=0, column=0, sticky="e", padx=5, pady=5)
         self.title_var = tk.StringVar()
         tk.Entry(self, textvariable=self.title_var, width=80).grid(row=0, column=1, pady=5)
@@ -87,39 +87,37 @@ class ControlDetails(ttk.Frame):
         refs = "\n".join(link.href for link in control.links or [] if link.rel == "reference")
         self.refs_text.delete("1.0", tk.END)
         self.refs_text.insert("1.0", refs or "No references.")
-        
-        # Enhanced handling of related links
         for label in self.link_labels:
             label.destroy()
         self.link_labels = []
         for link in control.links or []:
             if link.rel == "related":
                 href = link.href
-                if href.startswith("#"):  # Internal reference
+                link_type = "Internal" if href.startswith("#") else "External"
+                if href.startswith("#"):
                     target_id = href[1:]
                     control_title = self.manager.get_control_title_by_id(target_id)
                     if control_title:
-                        display_text = f"{control_title} ({target_id})"
+                        display_text = f"{control_title} ({target_id}) ({link_type})"
                         lbl = tk.Label(self.links_frame, text=display_text, fg="blue", cursor="hand2")
                         lbl.pack(anchor="w")
-                        lbl.bind("<Button-1>", lambda e, tid=target_id: self.manager.select_control_by_id(tid))
+                        lbl.bind("<Button-1>", lambda e, tid=target_id: self.manager.select_control_by_id(tid, from_link=True))
                     else:
                         resource_title = self.manager.get_resource_title_by_uuid(target_id)
                         if resource_title:
-                            display_text = f"{resource_title} ({target_id})"
+                            display_text = f"{resource_title} ({target_id}) ({link_type})"
                             lbl = tk.Label(self.links_frame, text=display_text)
                             lbl.pack(anchor="w")
                         else:
-                            display_text = f"Unknown Reference ({href})"
+                            display_text = f"Unknown Reference ({href}) ({link_type})"
                             lbl = tk.Label(self.links_frame, text=display_text)
                             lbl.pack(anchor="w")
-                else:  # External URL
-                    display_text = href
+                else:
+                    display_text = f"{href} ({link_type})"
                     lbl = tk.Label(self.links_frame, text=display_text, fg="blue", cursor="hand2")
                     lbl.pack(anchor="w")
                     lbl.bind("<Button-1>", lambda e, url=href: webbrowser.open(url))
                 self.link_labels.append(lbl)
-        
         enhancements = "\n".join(f"{ctrl.id}: {ctrl.title}" for ctrl in control.controls or [])
         self.enhancements_text.delete("1.0", tk.END)
         self.enhancements_text.insert("1.0", enhancements or "No enhancements.")
@@ -141,37 +139,64 @@ class DetailsPane(ttk.Frame):
     """Manages switching between group and control details."""
     def __init__(self, parent, manager):
         super().__init__(parent)
-        self.manager = manager  # Reference to CatalogManager
-        self.group_details = GroupDetails(self)
-        self.control_details = ControlDetails(self, manager)  # Pass manager to ControlDetails
-        self.no_selection_label = tk.Label(self, text="Select a group or control to edit")
-        self.no_selection_label.grid(row=0, column=0, padx=5, pady=5)
+        self.manager = manager
+
+        # Navigation buttons at the top (fixed, not scrollable)
+        self.nav_frame = ttk.Frame(self)
+        self.nav_frame.pack(fill="x", pady=5)
+        self.back_button = tk.Button(self.nav_frame, text="Back", command=self.manager.go_back)
+        self.back_button.pack(side="left", padx=5, expand=True)
+        self.back_button.config(state=tk.DISABLED)
+        self.save_button = tk.Button(self.nav_frame, text="Save Changes", command=self.manager.save_changes)
+        self.save_button.pack(side="left", padx=5, expand=True)
+
+        # Scrollable content area
+        self.canvas = tk.Canvas(self)
+        self.scrollbar = ttk.Scrollbar(self, orient="vertical", command=self.canvas.yview)
+        self.scrollable_frame = ttk.Frame(self.canvas)
+
+        self.scrollable_frame.bind(
+            "<Configure>",
+            lambda e: self.canvas.configure(scrollregion=self.canvas.bbox("all"))
+        )
+
+        self.canvas.create_window((0, 0), window=self.scrollable_frame, anchor="nw")
+        self.canvas.configure(yscrollcommand=self.scrollbar.set)
+
+        self.canvas.pack(side="left", fill="both", expand=True)
+        self.scrollbar.pack(side="right", fill="y")
+
+        # Details content
+        self.group_details = GroupDetails(self.scrollable_frame)
+        self.control_details = ControlDetails(self.scrollable_frame, manager)
+        self.no_selection_label = tk.Label(self.scrollable_frame, text="Select a group or control to edit")
+        self.no_selection_label.pack(pady=5)
         self.current_details = None
         self.current_object = None
 
     def show_group(self, group: ControlGroup):
         """Displays group details."""
-        self.control_details.grid_remove()
-        self.group_details.grid(row=0, column=0, padx=5, pady=5)
+        self.control_details.pack_forget()
+        self.group_details.pack(fill="both", expand=True, padx=5, pady=5)
         self.group_details.load(group)
         self.current_details = self.group_details
         self.current_object = group
-        self.no_selection_label.grid_remove()
+        self.no_selection_label.pack_forget()
 
     def show_control(self, control: Control):
         """Displays control details."""
-        self.group_details.grid_remove()
-        self.control_details.grid(row=0, column=0, padx=5, pady=5)
+        self.group_details.pack_forget()
+        self.control_details.pack(fill="both", expand=True, padx=5, pady=5)
         self.control_details.load(control)
         self.current_details = self.control_details
         self.current_object = control
-        self.no_selection_label.grid_remove()
+        self.no_selection_label.pack_forget()
 
     def clear(self):
         """Clears the details pane."""
-        self.group_details.grid_remove()
-        self.control_details.grid_remove()
-        self.no_selection_label.grid(row=0, column=0)
+        self.group_details.pack_forget()
+        self.control_details.pack_forget()
+        self.no_selection_label.pack()
         self.current_details = None
         self.current_object = None
 
@@ -186,6 +211,22 @@ class CatalogManager:
         self.catalog = catalog
         self.root = root
         self.root.title("OSCAL Catalog Manager")
+        self.history = []
+
+        # Apply a professional theme
+        style = ttk.Style()
+        style.theme_use('clam')
+        style.configure("Treeview", background="#f0f0f0", foreground="black", fieldbackground="#f0f0f0")
+        style.configure("Treeview.Heading", font=('Helvetica', 10, 'bold'))
+        style.configure("TButton", font=('Helvetica', 10), padding=5)
+        style.configure("TLabel", font=('Helvetica', 10), background="#e0e0e0")
+        style.configure("TEntry", font=('Helvetica', 10))
+        style.configure("TFrame", background="#e0e0e0")
+        style.configure("TText", font=('Helvetica', 10))
+
+        # Set background color for the root window
+        self.root.configure(bg="#e0e0e0")
+
         main_frame = ttk.Frame(self.root)
         main_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
         self.tree = ttk.Treeview(main_frame, columns=("ID", "Title"), show="headings", height=20)
@@ -197,9 +238,8 @@ class CatalogManager:
         scrollbar = ttk.Scrollbar(main_frame, orient="vertical", command=self.tree.yview)
         scrollbar.pack(side=tk.LEFT, fill=tk.Y)
         self.tree.configure(yscrollcommand=scrollbar.set)
-        self.details_pane = DetailsPane(main_frame, self)  # Pass self as manager
+        self.details_pane = DetailsPane(main_frame, self)
         self.details_pane.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True)
-        tk.Button(self.root, text="Save Changes", command=self.save_changes).pack(pady=10)
         for group in self.catalog.groups or []:
             group_node = self.tree.insert("", "end", text=group.id, values=(group.id, group.title), tags=("group",))
             for control in group.controls or []:
@@ -217,11 +257,14 @@ class CatalogManager:
             if "group" in tags:
                 group = self.find_group_by_id(item_id)
                 if group:
+                    self.history.append(("group", item_id))
                     self.details_pane.show_group(group)
             elif "control" in tags:
                 control = self.find_control_by_id(item_id)
                 if control:
+                    self.history.append(("control", item_id))
                     self.details_pane.show_control(control)
+            self.update_back_button_state()
         else:
             self.details_pane.clear()
 
@@ -263,14 +306,36 @@ class CatalogManager:
                     return resource.title
         return None
 
-    def select_control_by_id(self, control_id):
+    def select_control_by_id(self, control_id, from_link=False):
         """Select a control in the tree by its ID."""
         item = self.find_tree_item_by_id(control_id)
         if item:
             self.tree.selection_set(item)
             self.tree.see(item)
+            if from_link:
+                pass  # History is updated by on_tree_select
         else:
             messagebox.showinfo("Not Found", f"Control {control_id} not found in the catalog.")
+
+    def go_back(self):
+        """Navigate back to the previous item in the history."""
+        if len(self.history) > 1:
+            self.history.pop()
+            tag, item_id = self.history[-1]
+            item = self.find_tree_item_by_id(item_id)
+            if item:
+                self.tree.selection_set(item)
+                self.tree.see(item)
+            else:
+                messagebox.showinfo("Not Found", f"Item {item_id} not found in the catalog.")
+        self.update_back_button_state()
+
+    def update_back_button_state(self):
+        """Enable or disable the back button based on history."""
+        if len(self.history) > 1:
+            self.details_pane.back_button.config(state=tk.NORMAL)
+        else:
+            self.details_pane.back_button.config(state=tk.DISABLED)
 
     def save_changes(self):
         """Saves changes to the catalog file."""
