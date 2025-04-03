@@ -210,7 +210,7 @@ class CatalogManager:
     def __init__(self, catalog: Catalog, root: tk.Tk):
         self.catalog = catalog
         self.root = root
-        self.root.title("OSCAL Catalog Manager")
+        self.root.title("OSCAL Manager")
         self.history = []
 
         # Apply a professional theme
