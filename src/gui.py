@@ -84,9 +84,30 @@ class ControlDetails(ttk.Frame):
         self.roles_text.insert("1.0", roles or "No responsible roles.")
         status = next((prop.value for prop in control.props or [] if prop.name == "implementation-status"), "")
         self.status_var.set(status)
-        refs = "\n".join(link.href for link in control.links or [] if link.rel == "reference")
+        
+        # Enhanced handling of references
+        refs = []
+        for link in control.links or []:
+            if link.rel == "reference":
+                href = link.href
+                if href.startswith("#"):
+                    target_id = href[1:]
+                    control_title = self.manager.get_control_title_by_id(target_id)
+                    if control_title:
+                        refs.append(f"{control_title} ({target_id})")
+                    else:
+                        resource_title = self.manager.get_resource_title_by_uuid(target_id)
+                        if resource_title:
+                            refs.append(f"{resource_title} ({target_id})")
+                        else:
+                            refs.append(f"Unknown Reference ({href})")
+                else:
+                    refs.append(href)
+        refs_text = "\n".join(refs)
         self.refs_text.delete("1.0", tk.END)
-        self.refs_text.insert("1.0", refs or "No references.")
+        self.refs_text.insert("1.0", refs_text or "No references.")
+        
+        # Related Links
         for label in self.link_labels:
             label.destroy()
         self.link_labels = []
@@ -118,6 +139,7 @@ class ControlDetails(ttk.Frame):
                     lbl.pack(anchor="w")
                     lbl.bind("<Button-1>", lambda e, url=href: webbrowser.open(url))
                 self.link_labels.append(lbl)
+        
         enhancements = "\n".join(f"{ctrl.id}: {ctrl.title}" for ctrl in control.controls or [])
         self.enhancements_text.delete("1.0", tk.END)
         self.enhancements_text.insert("1.0", enhancements or "No enhancements.")
@@ -218,6 +240,8 @@ class CatalogManager:
         style.theme_use('clam')
         style.configure("Treeview", background="#f0f0f0", foreground="black", fieldbackground="#f0f0f0")
         style.configure("Treeview.Heading", font=('Helvetica', 10, 'bold'))
+        style.configure("Treeview.Group", font=('Helvetica', 10, 'bold'), background="#d0d0d0")
+        style.configure("Treeview.Control", font=('Helvetica', 10), background="#e8e8e8")
         style.configure("TButton", font=('Helvetica', 10), padding=5)
         style.configure("TLabel", font=('Helvetica', 10), background="#e0e0e0")
         style.configure("TEntry", font=('Helvetica', 10))
@@ -229,21 +253,35 @@ class CatalogManager:
 
         main_frame = ttk.Frame(self.root)
         main_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
-        self.tree = ttk.Treeview(main_frame, columns=("ID", "Title"), show="headings", height=20)
+
+        # Tree view with scrollbars
+        tree_frame = ttk.Frame(main_frame)
+        tree_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=False)
+        self.tree = ttk.Treeview(tree_frame, columns=("ID", "Title"), show="headings", height=20)
         self.tree.heading("ID", text="ID")
         self.tree.heading("Title", text="Title")
-        self.tree.column("ID", width=150)
-        self.tree.column("Title", width=600)
-        self.tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=False)
-        scrollbar = ttk.Scrollbar(main_frame, orient="vertical", command=self.tree.yview)
-        scrollbar.pack(side=tk.LEFT, fill=tk.Y)
-        self.tree.configure(yscrollcommand=scrollbar.set)
+        self.tree.column("ID", width=200)  # Increased width for better fit
+        self.tree.column("Title", width=400)  # Adjusted width for better fit
+        self.tree.pack(side="top", fill="both", expand=True)
+        v_scrollbar = ttk.Scrollbar(tree_frame, orient="vertical", command=self.tree.yview)
+        v_scrollbar.pack(side="right", fill="y")
+        h_scrollbar = ttk.Scrollbar(tree_frame, orient="horizontal", command=self.tree.xview)
+        h_scrollbar.pack(side="bottom", fill="x")
+        self.tree.configure(yscrollcommand=v_scrollbar.set, xscrollcommand=h_scrollbar.set)
+
         self.details_pane = DetailsPane(main_frame, self)
         self.details_pane.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True)
+
+        # Populate tree with custom tags for styling
         for group in self.catalog.groups or []:
             group_node = self.tree.insert("", "end", text=group.id, values=(group.id, group.title), tags=("group",))
             for control in group.controls or []:
                 self.tree.insert(group_node, "end", text=control.id, values=(control.id, control.title), tags=("control",))
+
+        # Apply tags for styling
+        self.tree.tag_configure("group", font=('Helvetica', 10, 'bold'), background="#d0d0d0")
+        self.tree.tag_configure("control", font=('Helvetica', 10), background="#e8e8e8")
+
         self.tree.bind("<<TreeviewSelect>>", self.on_tree_select)
         self.details_pane.clear()
 
