@@ -5,7 +5,8 @@ from pydantic import ValidationError
 import json
 import webbrowser
 import re
-from PIL import Image, ImageTk  # For handling icons
+import os
+from PIL import Image, ImageTk
 
 def save_catalog(catalog: Catalog, file_path: str):
     """Save the catalog to a JSON file."""
@@ -16,19 +17,58 @@ class GroupDetails(ttk.Frame):
     """Handles display and editing of group details."""
     def __init__(self, parent):
         super().__init__(parent)
-        tk.Label(self, text="Title:").grid(row=0, column=0, sticky="e", padx=5, pady=5)
+        # ID
+        tk.Label(self, text="ID:").grid(row=0, column=0, sticky="e", padx=5, pady=5)
+        self.id_var = tk.StringVar()
+        tk.Entry(self, textvariable=self.id_var, width=80, state="readonly").grid(row=0, column=1, pady=5)
+
+        # Title
+        tk.Label(self, text="Title:").grid(row=1, column=0, sticky="e", padx=5, pady=5)
         self.title_var = tk.StringVar()
-        tk.Entry(self, textvariable=self.title_var, width=80).grid(row=0, column=1, pady=5)
-        tk.Label(self, text="Properties:").grid(row=1, column=0, sticky="ne", padx=5, pady=5)
+        tk.Entry(self, textvariable=self.title_var, width=80).grid(row=1, column=1, pady=5)
+
+        # Description (if available)
+        tk.Label(self, text="Description:").grid(row=2, column=0, sticky="ne", padx=5, pady=5)
+        self.desc_text = tk.Text(self, height=5, width=80)
+        self.desc_text.grid(row=2, column=1, pady=5)
+
+        # Properties
+        tk.Label(self, text="Properties:").grid(row=3, column=0, sticky="ne", padx=5, pady=5)
         self.props_text = tk.Text(self, height=5, width=80)
-        self.props_text.grid(row=1, column=1, pady=5)
+        self.props_text.grid(row=3, column=1, pady=5)
+
+        # Controls List
+        tk.Label(self, text="Controls:").grid(row=4, column=0, sticky="ne", padx=5, pady=5)
+        self.controls_text = tk.Text(self, height=5, width=80)
+        self.controls_text.grid(row=4, column=1, pady=5)
 
     def load(self, group: ControlGroup):
         """Load group data into the widgets."""
-        self.title_var.set(group.title or "")
+        # ID
+        self.id_var.set(group.id or "No ID")
+
+        # Title
+        self.title_var.set(group.title or "No title")
+
+        # Description (from parts, if available)
+        desc = "No description."
+        if group.parts:
+            for part in group.parts:
+                if part.name == "statement" and part.prose:
+                    desc = part.prose
+                    break
+        self.desc_text.delete("1.0", tk.END)
+        self.desc_text.insert("1.0", desc)
+
+        # Properties
         props = "\n".join(f"{prop.name}: {prop.value}" for prop in group.props or [])
         self.props_text.delete("1.0", tk.END)
         self.props_text.insert("1.0", props or "No properties.")
+
+        # Controls List
+        controls = "\n".join(f"{control.id}: {control.title}" for control in group.controls or [])
+        self.controls_text.delete("1.0", tk.END)
+        self.controls_text.insert("1.0", controls or "No controls.")
 
     def save(self, group: ControlGroup):
         """Save widget data back to the group object."""
@@ -278,6 +318,7 @@ class CatalogManager:
         self.root = root
         self.root.title("OSCAL Manager")
         self.history = []
+        self.images = []
 
         # Theme Setup
         style = ttk.Style()
@@ -295,9 +336,11 @@ class CatalogManager:
         # Tree View
         tree_frame = ttk.Frame(main_frame)
         tree_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=False)
-        self.tree = ttk.Treeview(tree_frame, columns=("ID", "Title"), show="headings", height=20)
+        self.tree = ttk.Treeview(tree_frame, columns=("ID", "Title"), show="tree headings", height=20)
+        self.tree.heading("#0", text="")
         self.tree.heading("ID", text="ID")
         self.tree.heading("Title", text="Title")
+        self.tree.column("#0", width=50, minwidth=50)
         self.tree.column("ID", width=50)
         self.tree.column("Title", width=350)
         self.tree.pack(side="top", fill="both", expand=True)
@@ -308,20 +351,30 @@ class CatalogManager:
         self.tree.configure(yscrollcommand=v_scrollbar.set, xscrollcommand=h_scrollbar.set)
 
         # Load icons for groups and controls
+        base_path = os.path.dirname(os.path.abspath(__file__))
+        project_root = os.path.dirname(base_path)
         try:
-            self.folder_img = ImageTk.PhotoImage(Image.open("icons/folder.png").resize((16, 16)))
-            self.file_img = ImageTk.PhotoImage(Image.open("icons/file.png").resize((16, 16)))
-        except FileNotFoundError:
-            print("Warning: Icon files not found. Using text-only display.")
+            folder_path = os.path.join(project_root, "icons", "folder.png")
+            file_path = os.path.join(project_root, "icons", "file.png")
+            print(f"Loading folder icon from: {folder_path}")
+            print(f"Loading file icon from: {file_path}")
+            folder_img = Image.open(folder_path).resize((16, 16))
+            file_img = Image.open(file_path).resize((16, 16))
+            self.folder_img = ImageTk.PhotoImage(folder_img)
+            self.file_img = ImageTk.PhotoImage(file_img)
+            self.images.append(self.folder_img)
+            self.images.append(self.file_img)
+        except FileNotFoundError as e:
+            print(f"Error loading icons: {e}")
             self.folder_img = None
             self.file_img = None
 
         # Populate Tree with collapsible nodes and icons
         for group in self.catalog.groups or []:
-            group_node = self.tree.insert("", "end", text=group.id, values=(group.id, group.title), 
+            group_node = self.tree.insert("", "end", text="", values=(group.id, group.title), 
                                         tags=("group",), image=self.folder_img, open=False)
             for control in group.controls or []:
-                self.tree.insert(group_node, "end", text=control.id, values=(control.id, control.title), 
+                self.tree.insert(group_node, "end", text="", values=(control.id, control.title), 
                                 tags=("control",), image=self.file_img)
         self.tree.tag_configure("group", font=('Helvetica', 10, 'bold'), background="#d0d0d0")
         self.tree.tag_configure("control", font=('Helvetica', 10), background="#e8e8e8")
