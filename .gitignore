@@ -6,3 +6,4 @@ venv*/
 *.pyd
 .Python
 *.log
+.DS_Store
