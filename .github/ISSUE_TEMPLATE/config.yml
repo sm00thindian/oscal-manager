@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: OSCAL Documentation
+    url: https://pages.nist.gov/OSCAL/
+    about: Official OSCAL documentation for reference.
+  - name: Project Discussion
+    url: https://github.com/sm00thindian/oscal-manager/discussions
+    about: Discuss ideas or ask questions in the Discussions tab.
