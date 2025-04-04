@@ -1,13 +1,16 @@
 oscal-manager/
 ├── src/
-│   ├── __init__.py
 │   ├── main.py
 │   ├── gui.py
-│   └── oscal_handler.py
+│   ├── oscal_handler.py
+│   └── __init__.py
 ├── data/
 │   └── NIST_SP-800-53_rev5_catalog.json
 ├── docs/
 │   └── README.md
-├── venv/
+├── icons/
+│   ├── folder.png
+│   └── file.png
 ├── requirements.txt
+├── setup.sh
 └── .gitignore
