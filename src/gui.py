@@ -1,6 +1,6 @@
 import tkinter as tk
-from tkinter import ttk, messagebox
-from oscal_pydantic.catalog import Catalog, ControlGroup, Control
+from tkinter import ttk, messagebox, simpledialog
+from oscal_pydantic.catalog import Catalog, ControlGroup, Control, Part  # Added Part import
 from pydantic import ValidationError
 import json
 import webbrowser
@@ -11,46 +11,35 @@ from PIL import Image, ImageTk
 def save_catalog(catalog: Catalog, file_path: str):
     """Save the catalog to a JSON file."""
     with open(file_path, 'w') as f:
-        json.dump(catalog.dict(exclude_none=True), f, indent=2)
+        f.write(catalog.json(exclude_none=True, indent=2))
 
 class GroupDetails(ttk.Frame):
     """Handles display and editing of group details."""
     def __init__(self, parent):
         super().__init__(parent)
-        # ID
         tk.Label(self, text="ID:").grid(row=0, column=0, sticky="e", padx=5, pady=5)
         self.id_var = tk.StringVar()
         tk.Entry(self, textvariable=self.id_var, width=80, state="readonly").grid(row=0, column=1, pady=5)
 
-        # Title
         tk.Label(self, text="Title:").grid(row=1, column=0, sticky="e", padx=5, pady=5)
         self.title_var = tk.StringVar()
         tk.Entry(self, textvariable=self.title_var, width=80).grid(row=1, column=1, pady=5)
 
-        # Description (if available)
         tk.Label(self, text="Description:").grid(row=2, column=0, sticky="ne", padx=5, pady=5)
         self.desc_text = tk.Text(self, height=5, width=80)
         self.desc_text.grid(row=2, column=1, pady=5)
 
-        # Properties
         tk.Label(self, text="Properties:").grid(row=3, column=0, sticky="ne", padx=5, pady=5)
         self.props_text = tk.Text(self, height=5, width=80)
         self.props_text.grid(row=3, column=1, pady=5)
 
-        # Controls List
         tk.Label(self, text="Controls:").grid(row=4, column=0, sticky="ne", padx=5, pady=5)
         self.controls_text = tk.Text(self, height=5, width=80)
         self.controls_text.grid(row=4, column=1, pady=5)
 
     def load(self, group: ControlGroup):
-        """Load group data into the widgets."""
-        # ID
         self.id_var.set(group.id or "No ID")
-
-        # Title
         self.title_var.set(group.title or "No title")
-
-        # Description (from parts, if available)
         desc = "No description."
         if group.parts:
             for part in group.parts:
@@ -59,19 +48,14 @@ class GroupDetails(ttk.Frame):
                     break
         self.desc_text.delete("1.0", tk.END)
         self.desc_text.insert("1.0", desc)
-
-        # Properties
         props = "\n".join(f"{prop.name}: {prop.value}" for prop in group.props or [])
         self.props_text.delete("1.0", tk.END)
         self.props_text.insert("1.0", props or "No properties.")
-
-        # Controls List
         controls = "\n".join(f"{control.id}: {control.title}" for control in group.controls or [])
         self.controls_text.delete("1.0", tk.END)
         self.controls_text.insert("1.0", controls or "No controls.")
 
     def save(self, group: ControlGroup):
-        """Save widget data back to the group object."""
         group.title = self.title_var.get()
 
 class ControlDetails(ttk.Frame):
@@ -80,46 +64,50 @@ class ControlDetails(ttk.Frame):
         super().__init__(parent)
         self.manager = manager
 
-        tk.Label(self, text="Title:").grid(row=0, column=0, sticky="e", padx=5, pady=5)
+        tk.Label(self, text="ID:").grid(row=0, column=0, sticky="e", padx=5, pady=5)
+        self.id_var = tk.StringVar()
+        tk.Entry(self, textvariable=self.id_var, width=80, state="readonly").grid(row=0, column=1, pady=5)
+
+        tk.Label(self, text="Title:").grid(row=1, column=0, sticky="e", padx=5, pady=5)
         self.title_var = tk.StringVar()
-        tk.Entry(self, textvariable=self.title_var, width=80).grid(row=0, column=1, pady=5)
+        tk.Entry(self, textvariable=self.title_var, width=80).grid(row=1, column=1, pady=5)
 
-        tk.Label(self, text="Description:").grid(row=1, column=0, sticky="ne", padx=5, pady=5)
+        tk.Label(self, text="Description:").grid(row=2, column=0, sticky="ne", padx=5, pady=5)
         self.desc_text = tk.Text(self, height=5, width=80)
-        self.desc_text.grid(row=1, column=1, pady=5)
-
-        tk.Label(self, text="Statement Items:").grid(row=2, column=0, sticky="ne", padx=5, pady=5)
-        self.items_text = tk.Text(self, height=5, width=80)
-        self.items_text.grid(row=2, column=1, pady=5)
+        self.desc_text.grid(row=2, column=1, pady=5)
 
         tk.Label(self, text="Properties:").grid(row=3, column=0, sticky="ne", padx=5, pady=5)
         self.props_text = tk.Text(self, height=3, width=80)
         self.props_text.grid(row=3, column=1, pady=5)
 
-        tk.Label(self, text="Responsible Roles:").grid(row=4, column=0, sticky="ne", padx=5, pady=5)
+        tk.Label(self, text="Statement Items:").grid(row=4, column=0, sticky="ne", padx=5, pady=5)
+        self.items_text = tk.Text(self, height=5, width=80)
+        self.items_text.grid(row=4, column=1, pady=5)
+
+        tk.Label(self, text="Responsible Roles:").grid(row=5, column=0, sticky="ne", padx=5, pady=5)
         self.roles_text = tk.Text(self, height=2, width=80)
-        self.roles_text.grid(row=4, column=1, pady=5)
+        self.roles_text.grid(row=5, column=1, pady=5)
 
-        tk.Label(self, text="Implementation Status:").grid(row=5, column=0, sticky="e", padx=5, pady=5)
+        tk.Label(self, text="Implementation Status:").grid(row=6, column=0, sticky="e", padx=5, pady=5)
         self.status_var = tk.StringVar()
-        tk.Entry(self, textvariable=self.status_var, width=80).grid(row=5, column=1, pady=5)
+        tk.Entry(self, textvariable=self.status_var, width=80).grid(row=6, column=1, pady=5)
 
-        tk.Label(self, text="References:").grid(row=6, column=0, sticky="ne", padx=5, pady=5)
+        tk.Label(self, text="References:").grid(row=7, column=0, sticky="ne", padx=5, pady=5)
         self.refs_text = tk.Text(self, height=3, width=80)
-        self.refs_text.grid(row=6, column=1, pady=5)
+        self.refs_text.grid(row=7, column=1, pady=5)
 
-        tk.Label(self, text="Related Links:").grid(row=7, column=0, sticky="ne", padx=5, pady=5)
+        tk.Label(self, text="Related Links:").grid(row=8, column=0, sticky="ne", padx=5, pady=5)
         self.links_frame = ttk.Frame(self)
-        self.links_frame.grid(row=7, column=1, pady=5, sticky="w")
+        self.links_frame.grid(row=8, column=1, pady=5, sticky="w")
         self.link_labels = []
 
-        tk.Label(self, text="Enhancements:").grid(row=8, column=0, sticky="ne", padx=5, pady=5)
+        tk.Label(self, text="Enhancements:").grid(row=9, column=0, sticky="ne", padx=5, pady=5)
         self.enhancements_text = tk.Text(self, height=3, width=80)
-        self.enhancements_text.grid(row=8, column=1, pady=5)
+        self.enhancements_text.grid(row=9, column=1, pady=5)
 
-        tk.Label(self, text="Parameters:").grid(row=9, column=0, sticky="ne", padx=5, pady=5)
+        tk.Label(self, text="Parameters:").grid(row=10, column=0, sticky="ne", padx=5, pady=5)
         self.params_text = tk.Text(self, height=5, width=80)
-        self.params_text.grid(row=9, column=1, pady=5)
+        self.params_text.grid(row=10, column=1, pady=5)
 
     def parse_prose(self, prose, control_params, catalog_params):
         pattern = r"(\{\{\s*insert:\s*param,\s*(\w+)\s*\}\})"
@@ -142,24 +130,32 @@ class ControlDetails(ttk.Frame):
         return result
 
     def load(self, control: Control):
+        self.id_var.set(control.id or "No ID")
         self.title_var.set(control.title or "")
         self.desc_text.delete("1.0", tk.END)
         for part in control.parts or []:
-            if part.name == "statement" and part.prose:
-                segments = self.parse_prose(part.prose, control.params or [], self.manager.catalog.params or [])
-                for text, tag in segments:
-                    self.desc_text.insert(tk.END, text, tag)
-                self.desc_text.insert(tk.END, "\n")
+            if hasattr(part, 'name'):  # Check if part is a Pydantic object
+                if part.name == "statement" and part.prose:
+                    segments = self.parse_prose(part.prose, control.params or [], self.manager.catalog.params or [])
+                    for text, tag in segments:
+                        self.desc_text.insert(tk.END, text, tag)
+                    self.desc_text.insert(tk.END, "\n")
+            else:  # Handle dictionary case
+                if part.get("name") == "statement" and part.get("prose"):
+                    segments = self.parse_prose(part["prose"], control.params or [], self.manager.catalog.params or [])
+                    for text, tag in segments:
+                        self.desc_text.insert(tk.END, text, tag)
+                    self.desc_text.insert(tk.END, "\n")
         self.desc_text.tag_configure("normal", foreground="black")
         self.desc_text.tag_configure("param", foreground="blue", font=("Helvetica", 10, "bold"))
-
-        items = "\n".join(part.prose for part in control.parts or [] if part.name == "item")
-        self.items_text.delete("1.0", tk.END)
-        self.items_text.insert("1.0", items or "No statement items.")
 
         props = "\n".join(f"{prop.name}: {prop.value}" for prop in control.props or [])
         self.props_text.delete("1.0", tk.END)
         self.props_text.insert("1.0", props or "No properties.")
+
+        items = "\n".join(part.prose for part in control.parts or [] if part.name == "item")
+        self.items_text.delete("1.0", tk.END)
+        self.items_text.insert("1.0", items or "No statement items.")
 
         roles = "\n".join(link.role_id for link in control.links or [] if link.rel == "responsible-role")
         self.roles_text.delete("1.0", tk.END)
@@ -207,7 +203,6 @@ class ControlDetails(ttk.Frame):
             if part.name == "statement" and part.prose:
                 matches = re.findall(r"\{\{\s*insert:\s*param,\s*(\w+)\s*\}\}", part.prose)
                 referenced_param_ids.update(matches)
-
         all_params = (control.params or []) + (self.manager.catalog.params or [])
         displayed_params = set()
         for param_id in referenced_param_ids:
@@ -224,7 +219,6 @@ class ControlDetails(ttk.Frame):
                         params_info += f" - {constraint.description}\n"
                 params_info += "\n"
                 displayed_params.add(param.id)
-
         for param in control.params or []:
             if param.id not in displayed_params:
                 params_info += f"ID: {param.id}\n"
@@ -238,12 +232,27 @@ class ControlDetails(ttk.Frame):
                         params_info += f" - {constraint.description}\n"
                 params_info += "\n"
                 displayed_params.add(param.id)
-
         self.params_text.delete("1.0", tk.END)
         self.params_text.insert("1.0", params_info or "No parameters.")
 
     def save(self, control: Control):
         control.title = self.title_var.get()
+        for part in control.parts or []:
+            if part.name == "statement":
+                part.prose = self.desc_text.get("1.0", tk.END).strip()
+                break
+        else:
+            control.parts = control.parts or []
+            control.parts.append(Part(name="statement", prose=self.desc_text.get("1.0", tk.END).strip()))
+        props_text = self.props_text.get("1.0", tk.END).strip()
+        if props_text and props_text != "No properties.":
+            control.props = []
+            for line in props_text.split("\n"):
+                if ": " in line:
+                    name, value = line.split(": ", 1)
+                    control.props.append({"name": name.strip(), "value": value.strip()})
+        else:
+            control.props = []
         status = self.status_var.get()
         if status:
             if not control.props:
@@ -265,6 +274,14 @@ class DetailsPane(ttk.Frame):
         self.nav_frame.pack(fill="x", pady=5)
         self.back_button = tk.Button(self.nav_frame, text="Back", command=self.manager.go_back, state=tk.DISABLED)
         self.back_button.pack(side="left", padx=5)
+        self.new_control_button = tk.Button(self.nav_frame, text="New Control", command=self.manager.new_control)
+        self.new_control_button.pack(side="left", padx=5)
+        self.new_group_button = tk.Button(self.nav_frame, text="New Group", command=self.manager.new_group)
+        self.new_group_button.pack(side="left", padx=5)
+        self.delete_control_button = tk.Button(self.nav_frame, text="Delete Control", command=self.manager.delete_control)
+        self.delete_control_button.pack(side="left", padx=5)
+        self.delete_group_button = tk.Button(self.nav_frame, text="Delete Group", command=self.manager.delete_group)
+        self.delete_group_button.pack(side="left", padx=5)
         self.save_button = tk.Button(self.nav_frame, text="Save Changes", command=self.manager.save_changes)
         self.save_button.pack(side="left", padx=5)
 
@@ -291,6 +308,10 @@ class DetailsPane(ttk.Frame):
         self.current_details = self.group_details
         self.current_object = group
         self.no_selection_label.pack_forget()
+        self.new_control_button.config(state=tk.NORMAL)
+        self.new_group_button.config(state=tk.NORMAL)
+        self.delete_control_button.config(state=tk.DISABLED)
+        self.delete_group_button.config(state=tk.NORMAL)
 
     def show_control(self, control: Control):
         self.group_details.pack_forget()
@@ -299,6 +320,10 @@ class DetailsPane(ttk.Frame):
         self.current_details = self.control_details
         self.current_object = control
         self.no_selection_label.pack_forget()
+        self.new_control_button.config(state=tk.DISABLED)
+        self.new_group_button.config(state=tk.NORMAL)
+        self.delete_control_button.config(state=tk.NORMAL)
+        self.delete_group_button.config(state=tk.DISABLED)
 
     def clear(self):
         self.group_details.pack_forget()
@@ -306,6 +331,10 @@ class DetailsPane(ttk.Frame):
         self.no_selection_label.pack()
         self.current_details = None
         self.current_object = None
+        self.new_control_button.config(state=tk.DISABLED)
+        self.new_group_button.config(state=tk.NORMAL)
+        self.delete_control_button.config(state=tk.DISABLED)
+        self.delete_group_button.config(state=tk.DISABLED)
 
     def save_current(self):
         if self.current_details and self.current_object:
@@ -320,7 +349,6 @@ class CatalogManager:
         self.history = []
         self.images = []
 
-        # Theme Setup
         style = ttk.Style()
         style.theme_use('clam')
         style.configure("Treeview", background="#f0f0f0", foreground="black", fieldbackground="#f0f0f0")
@@ -329,11 +357,9 @@ class CatalogManager:
         style.configure("Treeview.Control", font=('Helvetica', 10), background="#e8e8e8")
         self.root.configure(bg="#e0e0e0")
 
-        # Main Layout
         main_frame = ttk.Frame(self.root)
         main_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
 
-        # Tree View
         tree_frame = ttk.Frame(main_frame)
         tree_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=False)
         self.tree = ttk.Treeview(tree_frame, columns=("ID", "Title"), show="tree headings", height=20)
@@ -350,7 +376,6 @@ class CatalogManager:
         h_scrollbar.pack(side="bottom", fill="x")
         self.tree.configure(yscrollcommand=v_scrollbar.set, xscrollcommand=h_scrollbar.set)
 
-        # Load icons for groups and controls
         base_path = os.path.dirname(os.path.abspath(__file__))
         project_root = os.path.dirname(base_path)
         try:
@@ -369,7 +394,6 @@ class CatalogManager:
             self.folder_img = None
             self.file_img = None
 
-        # Populate Tree with collapsible nodes and icons
         for group in self.catalog.groups or []:
             group_node = self.tree.insert("", "end", text="", values=(group.id, group.title), 
                                         tags=("group",), image=self.folder_img, open=False)
@@ -380,7 +404,6 @@ class CatalogManager:
         self.tree.tag_configure("control", font=('Helvetica', 10), background="#e8e8e8")
         self.tree.bind("<<TreeviewSelect>>", self.on_tree_select)
 
-        # Tooltip setup
         self.tooltip = tk.Toplevel(self.root)
         self.tooltip.wm_overrideredirect(True)
         self.tooltip.wm_attributes("-topmost", True)
@@ -394,7 +417,6 @@ class CatalogManager:
         self.tree.bind("<Leave>", self.on_tree_leave)
         self.tree.bind("<ButtonPress>", lambda e: self.hide_tooltip())
 
-        # Details Pane
         self.details_pane = DetailsPane(main_frame, self)
         self.details_pane.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True)
         self.details_pane.clear()
@@ -432,7 +454,15 @@ class CatalogManager:
         elif "control" in tags:
             control = self.find_control_by_id(item_id)
             if control:
-                statement_part = next((part for part in control.parts or [] if part.name == "statement"), None)
+                statement_part = None
+                for part in control.parts or []:
+                    if hasattr(part, 'name'):
+                        if part.name == "statement":
+                            statement_part = part
+                            break
+                    elif isinstance(part, dict) and part.get("name") == "statement":
+                        statement_part = part
+                        break
                 desc_snippet = statement_part.prose[:100] + "..." if statement_part and statement_part.prose else "No description."
                 text = f"Control: {control.id}\n{control.title}\n{desc_snippet}"
         else:
@@ -510,10 +540,118 @@ class CatalogManager:
     def update_back_button_state(self):
         self.details_pane.back_button.config(state=tk.NORMAL if len(self.history) > 1 else tk.DISABLED)
 
+    def is_control_id_unique(self, control_id):
+        for group in self.catalog.groups or []:
+            for control in group.controls or []:
+                if control.id == control_id:
+                    return False
+        return True
+
+    def is_group_id_unique(self, group_id):
+        for group in self.catalog.groups or []:
+            if group.id == group_id:
+                return False
+        return True
+
+    def new_control(self):
+        selected = self.tree.selection()
+        if selected:
+            item = self.tree.item(selected[0])
+            tags = item["tags"]
+            if "group" in tags:
+                group_id = item["values"][0]
+                group = self.find_group_by_id(group_id)
+                if group:
+                    new_id = simpledialog.askstring("New Control", "Enter unique ID for the new control:", parent=self.root)
+                    if new_id:
+                        if self.is_control_id_unique(new_id):
+                            new_control = Control(id=new_id, title="New Control")
+                            group.controls = group.controls or []
+                            group.controls.append(new_control)
+                            control_node = self.tree.insert(selected[0], "end", text="", values=(new_id, "New Control"), 
+                                                          tags=("control",), image=self.file_img)
+                            self.tree.selection_set(control_node)
+                            self.tree.see(control_node)
+                            self.details_pane.show_control(new_control)
+                        else:
+                            messagebox.showerror("Error", f"Control ID '{new_id}' already exists.")
+                    else:
+                        messagebox.showwarning("Warning", "No ID provided for new control.")
+            else:
+                messagebox.showwarning("Warning", "Please select a group to add a new control.")
+        else:
+            messagebox.showwarning("Warning", "Please select a group to add a new control.")
+
+    def new_group(self):
+        new_id = simpledialog.askstring("New Group", "Enter unique ID for the new group:", parent=self.root)
+        if new_id:
+            if self.is_group_id_unique(new_id):
+                new_group = ControlGroup(id=new_id, title="New Group")
+                self.catalog.groups = self.catalog.groups or []
+                self.catalog.groups.append(new_group)
+                group_node = self.tree.insert("", "end", text="", values=(new_id, "New Group"), 
+                                            tags=("group",), image=self.folder_img, open=False)
+                self.tree.selection_set(group_node)
+                self.tree.see(group_node)
+                self.details_pane.show_group(new_group)
+            else:
+                messagebox.showerror("Error", f"Group ID '{new_id}' already exists.")
+        else:
+            messagebox.showwarning("Warning", "No ID provided for new group.")
+
+    def delete_control(self):
+        selected = self.tree.selection()
+        if selected:
+            item = self.tree.item(selected[0])
+            tags = item["tags"]
+            if "control" in tags:
+                control_id = item["values"][0]
+                control = self.find_control_by_id(control_id)
+                if control:
+                    if messagebox.askyesno("Confirm Delete", f"Are you sure you want to delete control '{control_id}'?"):
+                        for group in self.catalog.groups or []:
+                            if control in group.controls:
+                                group.controls.remove(control)
+                                break
+                        self.tree.delete(selected[0])
+                        self.details_pane.clear()
+            else:
+                messagebox.showwarning("Warning", "Please select a control to delete.")
+        else:
+            messagebox.showwarning("Warning", "Please select a control to delete.")
+
+    def delete_group(self):
+        selected = self.tree.selection()
+        if selected:
+            item = self.tree.item(selected[0])
+            tags = item["tags"]
+            if "group" in tags:
+                group_id = item["values"][0]
+                group = self.find_group_by_id(group_id)
+                if group:
+                    if messagebox.askyesno("Confirm Delete", f"Are you sure you want to delete group '{group_id}' and all its controls?"):
+                        self.catalog.groups.remove(group)
+                        self.tree.delete(selected[0])
+                        self.details_pane.clear()
+            else:
+                messagebox.showwarning("Warning", "Please select a group to delete.")
+        else:
+            messagebox.showwarning("Warning", "Please select a group to delete.")
+
     def save_changes(self):
         try:
             self.details_pane.save_current()
             save_catalog(self.catalog, "data/NIST_SP-800-53_rev5_catalog.json")
+            if isinstance(self.details_pane.current_object, ControlGroup):
+                group = self.details_pane.current_object
+                item = self.find_tree_item_by_id(group.id)
+                if item:
+                    self.tree.item(item, values=(group.id, group.title))
+            elif isinstance(self.details_pane.current_object, Control):
+                control = self.details_pane.current_object
+                item = self.find_tree_item_by_id(control.id)
+                if item:
+                    self.tree.item(item, values=(control.id, control.title))
             messagebox.showinfo("Success", "Changes saved successfully!")
         except Exception as e:
             messagebox.showerror("Error", f"Failed to save: {str(e)}")
