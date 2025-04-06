@@ -21,7 +21,7 @@ OSCAL Manager is a Python application for managing compliance documents in compu
 
 1. **Clone the Repository**:
    ```bash
-   git clone https://github.com/yourusername/oscal-manager.git
+   git clone https://github.com/sm00thindian/oscal-manager.git
    cd oscal-manager
    ```
 
