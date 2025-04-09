@@ -1,12 +1,17 @@
 import tkinter as tk
 from tkinter import ttk, messagebox, simpledialog
-from oscal_pydantic.catalog import Catalog, ControlGroup, Control, Part  # Added Part import
+from oscal_pydantic.catalog import Catalog, ControlGroup, Control, Part
 from pydantic import ValidationError
 import json
 import webbrowser
 import re
 import os
 from PIL import Image, ImageTk
+try:
+    import darkdetect  # Optional, for better theme detection
+    DARKDETECT_AVAILABLE = True
+except ImportError:
+    DARKDETECT_AVAILABLE = False
 
 def save_catalog(catalog: Catalog, file_path: str):
     """Save the catalog to a JSON file."""
@@ -15,15 +20,19 @@ def save_catalog(catalog: Catalog, file_path: str):
 
 class GroupDetails(ttk.Frame):
     """Handles display and editing of group details."""
-    def __init__(self, parent):
+    def __init__(self, parent, manager):
         super().__init__(parent)
+        self.manager = manager  # Reference to CatalogManager for theme access
+
         tk.Label(self, text="ID:").grid(row=0, column=0, sticky="e", padx=5, pady=5)
         self.id_var = tk.StringVar()
-        tk.Entry(self, textvariable=self.id_var, width=80, state="readonly").grid(row=0, column=1, pady=5)
+        self.id_entry = tk.Entry(self, textvariable=self.id_var, width=80, state="readonly")
+        self.id_entry.grid(row=0, column=1, pady=5)
 
         tk.Label(self, text="Title:").grid(row=1, column=0, sticky="e", padx=5, pady=5)
         self.title_var = tk.StringVar()
-        tk.Entry(self, textvariable=self.title_var, width=80).grid(row=1, column=1, pady=5)
+        self.title_entry = tk.Entry(self, textvariable=self.title_var, width=80)
+        self.title_entry.grid(row=1, column=1, pady=5)
 
         tk.Label(self, text="Description:").grid(row=2, column=0, sticky="ne", padx=5, pady=5)
         self.desc_text = tk.Text(self, height=5, width=80)
@@ -36,6 +45,18 @@ class GroupDetails(ttk.Frame):
         tk.Label(self, text="Controls:").grid(row=4, column=0, sticky="ne", padx=5, pady=5)
         self.controls_text = tk.Text(self, height=5, width=80)
         self.controls_text.grid(row=4, column=1, pady=5)
+
+        self.update_colors()
+
+    def update_colors(self):
+        """Update widget colors based on the current theme."""
+        theme = self.manager.theme
+        # Skip self (ttk.Frame) since it doesn't support bg/fg; style is set in CatalogManager
+        for widget in [self.id_entry, self.title_entry, self.desc_text, self.props_text, self.controls_text]:
+            widget.configure(bg=theme["field_bg"], fg=theme["fg"])
+        for child in self.winfo_children():
+            if isinstance(child, tk.Label):
+                child.configure(bg=theme["bg"], fg=theme["fg"])
 
     def load(self, group: ControlGroup):
         self.id_var.set(group.id or "No ID")
@@ -66,11 +87,13 @@ class ControlDetails(ttk.Frame):
 
         tk.Label(self, text="ID:").grid(row=0, column=0, sticky="e", padx=5, pady=5)
         self.id_var = tk.StringVar()
-        tk.Entry(self, textvariable=self.id_var, width=80, state="readonly").grid(row=0, column=1, pady=5)
+        self.id_entry = tk.Entry(self, textvariable=self.id_var, width=80, state="readonly")
+        self.id_entry.grid(row=0, column=1, pady=5)
 
         tk.Label(self, text="Title:").grid(row=1, column=0, sticky="e", padx=5, pady=5)
         self.title_var = tk.StringVar()
-        tk.Entry(self, textvariable=self.title_var, width=80).grid(row=1, column=1, pady=5)
+        self.title_entry = tk.Entry(self, textvariable=self.title_var, width=80)
+        self.title_entry.grid(row=1, column=1, pady=5)
 
         tk.Label(self, text="Description:").grid(row=2, column=0, sticky="ne", padx=5, pady=5)
         self.desc_text = tk.Text(self, height=5, width=80)
@@ -90,7 +113,8 @@ class ControlDetails(ttk.Frame):
 
         tk.Label(self, text="Implementation Status:").grid(row=6, column=0, sticky="e", padx=5, pady=5)
         self.status_var = tk.StringVar()
-        tk.Entry(self, textvariable=self.status_var, width=80).grid(row=6, column=1, pady=5)
+        self.status_entry = tk.Entry(self, textvariable=self.status_var, width=80)
+        self.status_entry.grid(row=6, column=1, pady=5)
 
         tk.Label(self, text="References:").grid(row=7, column=0, sticky="ne", padx=5, pady=5)
         self.refs_text = tk.Text(self, height=3, width=80)
@@ -108,6 +132,25 @@ class ControlDetails(ttk.Frame):
         tk.Label(self, text="Parameters:").grid(row=10, column=0, sticky="ne", padx=5, pady=5)
         self.params_text = tk.Text(self, height=5, width=80)
         self.params_text.grid(row=10, column=1, pady=5)
+
+        self.update_colors()
+
+    def update_colors(self):
+        """Update widget colors based on the current theme."""
+        theme = self.manager.theme
+        # Skip self (ttk.Frame) since it doesn't support bg/fg; style is set in CatalogManager
+        for widget in [self.id_entry, self.title_entry, self.desc_text, self.props_text, 
+                       self.items_text, self.roles_text, self.status_entry, self.refs_text, 
+                       self.enhancements_text, self.params_text]:
+            widget.configure(bg=theme["field_bg"], fg=theme["fg"])
+        for child in self.winfo_children():
+            if isinstance(child, tk.Label):
+                child.configure(bg=theme["bg"], fg=theme["fg"])
+        self.desc_text.tag_configure("normal", foreground=theme["fg"])
+        self.desc_text.tag_configure("param", foreground="#00b7eb" if self.manager.is_dark_mode else "blue", 
+                                    font=("Helvetica", 10, "bold"))
+        for label in self.link_labels:
+            label.configure(bg=theme["bg"], fg="#00b7eb" if self.manager.is_dark_mode else "blue")
 
     def parse_prose(self, prose, control_params, catalog_params):
         pattern = r"(\{\{\s*insert:\s*param,\s*(\w+)\s*\}\})"
@@ -134,20 +177,18 @@ class ControlDetails(ttk.Frame):
         self.title_var.set(control.title or "")
         self.desc_text.delete("1.0", tk.END)
         for part in control.parts or []:
-            if hasattr(part, 'name'):  # Check if part is a Pydantic object
+            if hasattr(part, 'name'):
                 if part.name == "statement" and part.prose:
                     segments = self.parse_prose(part.prose, control.params or [], self.manager.catalog.params or [])
                     for text, tag in segments:
                         self.desc_text.insert(tk.END, text, tag)
                     self.desc_text.insert(tk.END, "\n")
-            else:  # Handle dictionary case
+            else:
                 if part.get("name") == "statement" and part.get("prose"):
                     segments = self.parse_prose(part["prose"], control.params or [], self.manager.catalog.params or [])
                     for text, tag in segments:
                         self.desc_text.insert(tk.END, text, tag)
                     self.desc_text.insert(tk.END, "\n")
-        self.desc_text.tag_configure("normal", foreground="black")
-        self.desc_text.tag_configure("param", foreground="blue", font=("Helvetica", 10, "bold"))
 
         props = "\n".join(f"{prop.name}: {prop.value}" for prop in control.props or [])
         self.props_text.delete("1.0", tk.END)
@@ -185,7 +226,7 @@ class ControlDetails(ttk.Frame):
                 href = link.href
                 link_type = "Internal" if href.startswith("#") else "External"
                 display_text = href if link_type == "External" else f"{self.manager.get_control_title_by_id(href[1:]) or 'Unknown'} ({href[1:]})"
-                lbl = tk.Label(self.links_frame, text=f"{display_text} ({link_type})", fg="blue", cursor="hand2")
+                lbl = tk.Label(self.links_frame, text=f"{display_text} ({link_type})", cursor="hand2")
                 lbl.pack(anchor="w")
                 if link_type == "External":
                     lbl.bind("<Button-1>", lambda e, url=href: webbrowser.open(url))
@@ -234,6 +275,8 @@ class ControlDetails(ttk.Frame):
                 displayed_params.add(param.id)
         self.params_text.delete("1.0", tk.END)
         self.params_text.insert("1.0", params_info or "No parameters.")
+
+        self.update_colors()
 
     def save(self, control: Control):
         control.title = self.title_var.get()
@@ -294,12 +337,26 @@ class DetailsPane(ttk.Frame):
         self.canvas.pack(side="left", fill="both", expand=True)
         self.scrollbar.pack(side="right", fill="y")
 
-        self.group_details = GroupDetails(self.scrollable_frame)
+        self.group_details = GroupDetails(self.scrollable_frame, manager)
         self.control_details = ControlDetails(self.scrollable_frame, manager)
         self.no_selection_label = tk.Label(self.scrollable_frame, text="Select a group or control to edit")
         self.no_selection_label.pack(pady=5)
         self.current_details = None
         self.current_object = None
+
+        self.update_colors()
+
+    def update_colors(self):
+        """Update widget colors based on the current theme."""
+        theme = self.manager.theme
+        self.canvas.configure(bg=theme["bg"])
+        self.scrollable_frame.configure(style="TFrame")
+        self.no_selection_label.configure(bg=theme["bg"], fg=theme["fg"])
+        for button in [self.back_button, self.new_control_button, self.new_group_button, 
+                       self.delete_control_button, self.delete_group_button, self.save_button]:
+            button.configure(bg=theme["button_bg"], fg=theme["fg"], disabledforeground=theme["disabled_fg"])
+        self.group_details.update_colors()
+        self.control_details.update_colors()
 
     def show_group(self, group: ControlGroup):
         self.control_details.pack_forget()
@@ -312,6 +369,7 @@ class DetailsPane(ttk.Frame):
         self.new_group_button.config(state=tk.NORMAL)
         self.delete_control_button.config(state=tk.DISABLED)
         self.delete_group_button.config(state=tk.NORMAL)
+        self.update_colors()
 
     def show_control(self, control: Control):
         self.group_details.pack_forget()
@@ -324,6 +382,7 @@ class DetailsPane(ttk.Frame):
         self.new_group_button.config(state=tk.NORMAL)
         self.delete_control_button.config(state=tk.NORMAL)
         self.delete_group_button.config(state=tk.DISABLED)
+        self.update_colors()
 
     def clear(self):
         self.group_details.pack_forget()
@@ -335,13 +394,14 @@ class DetailsPane(ttk.Frame):
         self.new_group_button.config(state=tk.NORMAL)
         self.delete_control_button.config(state=tk.DISABLED)
         self.delete_group_button.config(state=tk.DISABLED)
+        self.update_colors()
 
     def save_current(self):
         if self.current_details and self.current_object:
             self.current_details.save(self.current_object)
 
 class CatalogManager:
-    """Main GUI class for managing the OSCAL catalog."""
+    """Main GUI class for managing the OSCAL catalog with dynamic theming."""
     def __init__(self, catalog: Catalog, root: tk.Tk):
         self.catalog = catalog
         self.root = root
@@ -349,19 +409,36 @@ class CatalogManager:
         self.history = []
         self.images = []
 
-        style = ttk.Style()
-        style.theme_use('clam')
-        style.configure("Treeview", background="#f0f0f0", foreground="black", fieldbackground="#f0f0f0")
-        style.configure("Treeview.Heading", font=('Helvetica', 10, 'bold'))
-        style.configure("Treeview.Group", font=('Helvetica', 10, 'bold'), background="#d0d0d0")
-        style.configure("Treeview.Control", font=('Helvetica', 10), background="#e8e8e8")
-        self.root.configure(bg="#e0e0e0")
+        # Detect system theme (dark or light)
+        self.is_dark_mode = self.detect_system_theme()
 
+        # Define color schemes
+        self.light_theme = {
+            "bg": "#e0e0e0", "fg": "black", "tree_bg": "#f0f0f0", "tree_fg": "black",
+            "group_bg": "#d0d0d0", "control_bg": "#e8e8e8", "field_bg": "#f0f0f0",
+            "tooltip_bg": "#ffffe0", "button_bg": "#d3d3d3", "disabled_fg": "#a3a3a3"
+        }
+        self.dark_theme = {
+            "bg": "#2e2e2e", "fg": "white", "tree_bg": "#3c3c3c", "tree_fg": "white",
+            "group_bg": "#4a4a4a", "control_bg": "#383838", "field_bg": "#3c3c3c",
+            "tooltip_bg": "#4a4a4a", "button_bg": "#555555", "disabled_fg": "#888888"
+        }
+        self.theme = self.dark_theme if self.is_dark_mode else self.light_theme
+
+        # Configure root background
+        self.root.configure(bg=self.theme["bg"])
+
+        # Main frame
         main_frame = ttk.Frame(self.root)
         main_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
 
+        # Treeview setup
         tree_frame = ttk.Frame(main_frame)
         tree_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=False)
+        style = ttk.Style()
+        style.theme_use('clam')
+        self.configure_styles(style)
+
         self.tree = ttk.Treeview(tree_frame, columns=("ID", "Title"), show="tree headings", height=20)
         self.tree.heading("#0", text="")
         self.tree.heading("ID", text="ID")
@@ -376,13 +453,12 @@ class CatalogManager:
         h_scrollbar.pack(side="bottom", fill="x")
         self.tree.configure(yscrollcommand=v_scrollbar.set, xscrollcommand=h_scrollbar.set)
 
+        # Load icons
         base_path = os.path.dirname(os.path.abspath(__file__))
         project_root = os.path.dirname(base_path)
         try:
             folder_path = os.path.join(project_root, "icons", "folder.png")
             file_path = os.path.join(project_root, "icons", "file.png")
-            print(f"Loading folder icon from: {folder_path}")
-            print(f"Loading file icon from: {file_path}")
             folder_img = Image.open(folder_path).resize((16, 16))
             file_img = Image.open(file_path).resize((16, 16))
             self.folder_img = ImageTk.PhotoImage(folder_img)
@@ -394,21 +470,25 @@ class CatalogManager:
             self.folder_img = None
             self.file_img = None
 
+        # Populate tree
         for group in self.catalog.groups or []:
             group_node = self.tree.insert("", "end", text="", values=(group.id, group.title), 
                                         tags=("group",), image=self.folder_img, open=False)
             for control in group.controls or []:
                 self.tree.insert(group_node, "end", text="", values=(control.id, control.title), 
                                 tags=("control",), image=self.file_img)
-        self.tree.tag_configure("group", font=('Helvetica', 10, 'bold'), background="#d0d0d0")
-        self.tree.tag_configure("control", font=('Helvetica', 10), background="#e8e8e8")
+
+        self.tree.tag_configure("group", font=('Helvetica', 10, 'bold'), background=self.theme["group_bg"])
+        self.tree.tag_configure("control", font=('Helvetica', 10), background=self.theme["control_bg"])
         self.tree.bind("<<TreeviewSelect>>", self.on_tree_select)
 
+        # Tooltip setup
         self.tooltip = tk.Toplevel(self.root)
         self.tooltip.wm_overrideredirect(True)
         self.tooltip.wm_attributes("-topmost", True)
         self.tooltip.withdraw()
-        self.tooltip_label = tk.Label(self.tooltip, background="#ffffe0", relief="solid", borderwidth=1, 
+        self.tooltip_label = tk.Label(self.tooltip, background=self.theme["tooltip_bg"], 
+                                    foreground=self.theme["fg"], relief="solid", borderwidth=1, 
                                     justify="left", wraplength=300)
         self.tooltip_label.pack()
         self.tooltip_timer = None
@@ -417,9 +497,47 @@ class CatalogManager:
         self.tree.bind("<Leave>", self.on_tree_leave)
         self.tree.bind("<ButtonPress>", lambda e: self.hide_tooltip())
 
+        # Details pane
         self.details_pane = DetailsPane(main_frame, self)
         self.details_pane.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True)
         self.details_pane.clear()
+
+        # Bind theme change detection
+        self.root.after(1000, self.check_theme_change)
+
+    def detect_system_theme(self):
+        """Detect if the system is in dark mode."""
+        if DARKDETECT_AVAILABLE:
+            return darkdetect.isDark()
+        # Fallback: Check Tkinter window background (approximation)
+        bg = self.root.cget("bg")
+        if bg.startswith("#") and int(bg[1:], 16) < 0x808080:  # Rough heuristic for dark
+            return True
+        return False
+
+    def configure_styles(self, style):
+        """Configure styles based on current theme."""
+        style.configure("TFrame", background=self.theme["bg"])
+        style.configure("Treeview", background=self.theme["tree_bg"], foreground=self.theme["tree_fg"], 
+                        fieldbackground=self.theme["field_bg"])
+        style.configure("Treeview.Heading", font=('Helvetica', 10, 'bold'), 
+                        background=self.theme["group_bg"], foreground=self.theme["fg"])
+        style.map("Treeview", background=[('selected', '#a0a0a0' if self.is_dark_mode else '#b0c4de')])
+
+    def check_theme_change(self):
+        """Periodically check if the system theme has changed."""
+        new_dark_mode = self.detect_system_theme()
+        if new_dark_mode != self.is_dark_mode:
+            self.is_dark_mode = new_dark_mode
+            self.theme = self.dark_theme if self.is_dark_mode else self.light_theme
+            self.root.configure(bg=self.theme["bg"])
+            self.configure_styles(ttk.Style())
+            self.tree.tag_configure("group", font=('Helvetica', 10, 'bold'), background=self.theme["group_bg"])
+            self.tree.tag_configure("control", font=('Helvetica', 10), background=self.theme["control_bg"])
+            self.tooltip_label.config(background=self.theme["tooltip_bg"], foreground=self.theme["fg"])
+            self.details_pane.update_colors()
+            self.root.update_idletasks()
+        self.root.after(1000, self.check_theme_change)
 
     def show_tooltip(self, x, y, text):
         self.tooltip_label.config(text=text)

@@ -5,3 +5,4 @@ oscal-pydantic==2023.3.21
 pillow==11.1.0
 pydantic==1.10.13
 typing_extensions==4.13.0
+darkdetect
